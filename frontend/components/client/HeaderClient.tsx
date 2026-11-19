@@ -5,8 +5,12 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { Search, Globe, ShoppingCart, Menu, X, Mail } from 'lucide-react';
 import { useCart } from '@/store/cart';   // ✅ Import du store Zustand
+import { useShop } from '@/components/ShopProvider';
+import { api } from '@/lib/api';
+import type { Category } from '@/types';
 
-const NAV = [
+// Menu de secours, remplacé par les vraies catégories dès qu'elles sont chargées
+const DEFAULT_NAV = [
   { label: 'Smartphones', href: '/categorie/smartphones' },
   { label: 'Beauté', href: '/categorie/beauty' },
   { label: 'Maison', href: '/categorie/home' },
@@ -15,6 +19,7 @@ const NAV = [
 ];
 
 export default function HeaderClient() {
+  const shop = useShop();
   const pathname = usePathname();
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
@@ -23,6 +28,16 @@ export default function HeaderClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMobileOpen, setSearchMobileOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [nav, setNav] = useState(DEFAULT_NAV);
+
+  useEffect(() => {
+    api.get('/products/categories/')
+      .then((r) => {
+        const cats: Category[] = (r.data.results || r.data).slice(0, 5);
+        if (cats.length) setNav(cats.map((c) => ({ label: c.name, href: `/categorie/${c.slug}` })));
+      })
+      .catch(() => {});
+  }, []);
 
   // ✅ COMPTEUR DU PANIER EN TEMPS RÉEL (via Zustand)
   const cartCount = useCart((s) => s.count());
@@ -74,26 +89,19 @@ export default function HeaderClient() {
       >
         <div className="container-app py-4 flex items-center justify-between gap-4">
           {/* LOGO */}
-          <Link href="/" className="group relative">
-            <span className="font-serif text-xl lg:text-2xl font-black tracking-wider whitespace-nowrap relative">
-              <span className="bg-gradient-to-r from-gold via-gold-light to-gold-dark bg-[length:200%_auto] animate-shimmer bg-clip-text text-transparent">
-                GLOBAL
+          <Link href="/" className="group relative flex items-center" aria-label={shop.shop_name}>
+            {shop.logo_url ? (
+              <img src={shop.logo_url} alt={shop.shop_name} className="h-9 lg:h-11 w-auto" />
+            ) : (
+              <span className="font-serif text-xl lg:text-2xl font-black tracking-wider whitespace-nowrap uppercase bg-gradient-to-r from-gold via-gold-light to-gold-dark bg-[length:200%_auto] animate-shimmer bg-clip-text text-transparent">
+                {shop.shop_name}
               </span>
-              <span className="relative inline-block ml-1">
-                <span className="bg-gradient-to-r from-dark to-dark-soft bg-clip-text text-transparent">
-                  LUXE
-                </span>
-                <span className="absolute -bottom-1 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              </span>
-            </span>
-            <span className="absolute -top-2 -right-4 text-[0.6rem] font-serif text-gold/60 tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-              GL
-            </span>
+            )}
           </Link>
 
           {/* Navigation desktop */}
           <nav className="hidden lg:flex gap-8 text-sm font-medium">
-            {NAV.map((n) => {
+            {nav.map((n) => {
               const active =
                 (n.href === '/' && pathname === '/') ||
                 (n.href !== '/' && pathname?.startsWith(n.href));
@@ -170,7 +178,7 @@ export default function HeaderClient() {
             <Link
               href="/panier"
               className="relative p-2 hover:bg-gray-100 rounded-full transition-all duration-300 hover:scale-110 group"
-              aria-label={`Panier (${cartCount} articles)`}
+              aria-label={`Panier (${mounted ? cartCount : 0} articles)`}
             >
               <ShoppingCart
                 size={20}
@@ -257,7 +265,7 @@ export default function HeaderClient() {
               Catégories
             </p>
             <div className="space-y-1">
-              {NAV.map((n) => (
+              {nav.map((n) => (
                 <Link
                   key={n.href}
                   href={n.href}
@@ -283,8 +291,8 @@ export default function HeaderClient() {
           />
           <aside className="fixed top-0 right-0 bottom-0 w-[85%] max-w-sm bg-white/95 backdrop-blur-xl z-[70] lg:hidden shadow-2xl overflow-y-auto border-l border-gray-100">
             <div className="flex items-center justify-between p-4 border-b border-gray-100">
-              <span className="font-serif text-xl font-black bg-gradient-to-r from-gold to-gold-dark bg-clip-text text-transparent">
-                GLOBAL LUXE
+              <span className="font-serif text-xl font-black uppercase bg-gradient-to-r from-gold to-gold-dark bg-clip-text text-transparent">
+                {shop.shop_name}
               </span>
               <button
                 onClick={() => setMobileOpen(false)}
@@ -309,7 +317,7 @@ export default function HeaderClient() {
             </div>
 
             <nav className="flex flex-col p-4 gap-1">
-              {NAV.map((n, i) => (
+              {nav.map((n, i) => (
                 <Link
                   key={n.href}
                   href={n.href}
@@ -320,6 +328,13 @@ export default function HeaderClient() {
                   {n.label}
                 </Link>
               ))}
+
+              <Link href="/suivi" onClick={() => setMobileOpen(false)} className="py-3 px-3 rounded-lg text-base font-medium hover:bg-gray-50 transition mt-2">
+                Suivre ma commande
+              </Link>
+              <Link href="/contact" onClick={() => setMobileOpen(false)} className="py-3 px-3 rounded-lg text-base font-medium hover:bg-gray-50 transition">
+                Contact
+              </Link>
 
               {/* Lien panier mobile avec compteur */}
               <Link

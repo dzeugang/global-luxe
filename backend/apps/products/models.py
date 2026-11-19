@@ -72,6 +72,10 @@ class Product(models.Model):
     is_featured = models.BooleanField(default=False)
     is_best_seller = models.BooleanField(default=False)
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
+    # [{"name": "Couleur", "type": "color", "values": [{"label": "Noir", "hex": "#000000", "image": "", "price_delta": 0}]}]
+    options = models.JSONField(default=list, blank=True)
+    features = models.JSONField(default=list, blank=True, help_text="Points forts (liste de textes)")
+    specs = models.JSONField(default=list, blank=True, help_text='Caractéristiques [{"label": ..., "value": ...}]')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

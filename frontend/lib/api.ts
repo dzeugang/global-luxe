@@ -14,6 +14,15 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Code HTTP et message « detail » d'une erreur d'appel API
+export function apiError(e: unknown): { status?: number; detail?: string } {
+  if (axios.isAxiosError(e)) {
+    const data = e.response?.data as { detail?: string } | undefined;
+    return { status: e.response?.status, detail: data?.detail };
+  }
+  return {};
+}
+
 // Un seul rafraîchissement en cours, partagé par les requêtes en échec simultanées
 let refreshing: Promise<string | null> | null = null;
 

@@ -1,6 +1,7 @@
 import HeroHeader from '@/components/client/HeroHeader'; // ou importez votre HeaderClient
 import HeaderClient from '@/components/client/HeaderClient';
 import { api } from '@/lib/api';
+import { getShopSettings } from '@/lib/shop-server';
 import ProductCard from '@/components/client/ProductCard';
 import Link from 'next/link';
 import type { Product, Category } from '@/types';
@@ -8,6 +9,9 @@ import { ArrowRight } from 'lucide-react';
 
 // Si vous utilisez le HeaderClient personnalisé, importez-le ainsi :
 // import HeaderClient from '@/components/client/HeaderClient';
+
+// Page régénérée au plus toutes les 60 s : les nouveaux produits apparaissent sans rebuild
+export const revalidate = 60;
 
 interface PaginatedResponse<T> {
   count?: number;
@@ -41,7 +45,7 @@ async function getData() {
 }
 
 export default async function HomePage() {
-  const { featured, bestSellers, categories } = await getData();
+  const [{ featured, bestSellers, categories }, shop] = await Promise.all([getData(), getShopSettings()]);
 
   return (
     <>
@@ -50,7 +54,7 @@ export default async function HomePage() {
       <HeroHeader
         mediaSrc="https://images.unsplash.com/photo-1592899677977-9c10ca588bbd?w=1920&q=80"           
         mediaType="image"
-        badgeText="✨ Global Luxe Premium"
+        badgeText={`✨ ${shop.shop_name}`}
         title={['Shop Smarter.', 'Live Better.', 'Experience Luxury.']}
         subtitle="Votre marketplace premium..."
         ctaText="Explorer les produits"
@@ -154,7 +158,7 @@ export default async function HomePage() {
           ============================================ */}
       <section className="bg-gradient-to-r from-gray-900 via-black to-gray-900 text-gold py-4 my-12 overflow-hidden border-y-2 border-gold/30">
         <div className="whitespace-nowrap animate-marquee font-serif tracking-widest text-sm md:text-base">
-          ★ Smart Shopping! ★ Shop More, Save More! ★ Exclusive Big Discounts! ★ Welcome to Global Luxe ★ Smart Shopping! ★ Shop More, Save More! ★
+          ★ Bienvenue chez {shop.shop_name} ★ {shop.shop_tagline} ★ Livraison suivie ★ Bienvenue chez {shop.shop_name} ★ {shop.shop_tagline} ★
         </div>
       </section>
 
@@ -290,7 +294,7 @@ export default async function HomePage() {
             <p className="text-xs text-gold uppercase tracking-widest font-bold mb-2">
               Pourquoi nous choisir
             </p>
-            <h2 className="h2 mb-3">L&apos;expérience Global Luxe</h2>
+            <h2 className="h2 mb-3">L&apos;expérience {shop.shop_name}</h2>
             <p className="text-gray-500 text-sm max-w-xl mx-auto">
               Une marketplace pensée pour vous offrir le meilleur du shopping en ligne
             </p>

@@ -5,6 +5,7 @@ from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from apps.settings_app.views import ChangePasswordView
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
@@ -19,6 +20,7 @@ urlpatterns = [
     # Auth JWT
     path('api/auth/login/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/change-password/', ChangePasswordView.as_view(), name='change_password'),
 
     # APIs
     path('api/products/', include('apps.products.urls')),

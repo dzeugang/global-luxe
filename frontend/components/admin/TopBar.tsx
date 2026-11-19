@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Menu, Bell, Search, ExternalLink, X, ChevronDown, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import { api } from '@/lib/api';
 import Cookies from 'js-cookie';
+import { useShop } from '@/components/ShopProvider';
 import { useRouter } from 'next/navigation';
 
 interface Notification {
@@ -13,6 +14,7 @@ interface Notification {
   description: string;
   time: string;
   read: boolean;
+  href: string;
 }
 
 interface SearchResult {
@@ -28,26 +30,43 @@ interface Props {
 }
 
 export default function TopBar({ onMenuClick }: Props) {
+  const shop = useShop();
   const router = useRouter();
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: 1, type: 'order', title: 'Nouvelle commande #1234',
-      description: 'Commande de Jean Dupont — 349€', time: 'Il y a 2 min', read: false,
-    },
-    {
-      id: 2, type: 'message', title: 'Nouveau message',
-      description: 'Marie a envoyé une question sur la livraison', time: 'Il y a 1h', read: false,
-    },
-    {
-      id: 3, type: 'stock', title: 'Stock faible',
-      description: '4 produits sont en rupture de stock', time: 'Il y a 3h', read: true,
-    },
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // Notifications calculées à partir des KPIs (rafraîchies chaque minute)
+  useEffect(() => {
+    const load = () => api.get('/orders/stats/').then((r) => {
+      const st = r.data;
+      const next: Notification[] = [];
+      const pending = st.status_counts?.pending || 0;
+      if (pending) next.push({
+        id: 1, type: 'order', href: '/admin/commandes',
+        title: `${pending} commande${pending > 1 ? 's' : ''} en attente`,
+        description: 'À traiter ou à transmettre au fournisseur', time: 'Maintenant', read: false,
+      });
+      if (st.unread_messages) next.push({
+        id: 2, type: 'message', href: '/admin/messages',
+        title: `${st.unread_messages} message${st.unread_messages > 1 ? 's' : ''} non lu${st.unread_messages > 1 ? 's' : ''}`,
+        description: 'Des clients attendent une réponse', time: 'Maintenant', read: false,
+      });
+      if (st.low_stock?.length) next.push({
+        id: 3, type: 'stock', href: '/admin/produits',
+        title: 'Stock faible',
+        description: st.low_stock.map((p: { name: string }) => p.name).join(', '), time: 'Maintenant', read: false,
+      });
+      // Conserver l'état « lu » des notifications déjà vues
+      setNotifications((prev) => next.map((n) => ({ ...n, read: prev.find((o) => o.id === n.id && o.title === n.title)?.read ?? false })));
+    }).catch(() => {});
+    load();
+    const timer = setInterval(load, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -121,8 +140,10 @@ export default function TopBar({ onMenuClick }: Props) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const markAsRead = (id: number) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+  const markAsRead = (n: Notification) => {
+    setNotifications(notifications.map(o => o.id === n.id ? { ...o, read: true } : o));
+    setNotifOpen(false);
+    router.push(n.href);
   };
 
   const markAllAsRead = () => {
@@ -249,7 +270,7 @@ export default function TopBar({ onMenuClick }: Props) {
                     notifications.map((n) => (
                       <button
                         key={n.id}
-                        onClick={() => markAsRead(n.id)}
+                        onClick={() => markAsRead(n)}
                         className={`w-full text-left p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition flex gap-3 ${
                           !n.read ? 'bg-gold/5' : ''
                         }`}
@@ -275,11 +296,11 @@ export default function TopBar({ onMenuClick }: Props) {
                 </div>
                 <div className="p-3 border-t border-gray-100 bg-gray-50">
                   <Link
-                    href="/admin/notifications"
+                    href="/admin/dashboard"
                     onClick={() => setNotifOpen(false)}
                     className="block text-center text-sm font-semibold text-gold hover:text-gold-dark"
                   >
-                    Voir toutes les notifications
+                    Voir le tableau de bord
                   </Link>
                 </div>
               </div>
@@ -320,7 +341,7 @@ export default function TopBar({ onMenuClick }: Props) {
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold text-sm">Admin</p>
-                      <p className="text-xs text-gray-500 truncate">admin@globalluxe.com</p>
+                      <p className="text-xs text-gray-500 truncate">{shop.shop_name}</p>
                     </div>
                   </div>
                 </div>

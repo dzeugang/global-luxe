@@ -1,482 +1,206 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { api, apiError } from '@/lib/api';
+import { shade, type ShopSettings } from '@/lib/shop';
 import {
-  Settings as SettingsIcon, Globe, CreditCard, Truck, Mail,
-  Bell, Shield, Database, Plus, Save, Trash2, X, Eye, EyeOff,
-  Check, AlertCircle, Sparkles, Key,
+  Settings as SettingsIcon, Globe, Palette, Truck, Mail, Bell, Shield, Database,
+  Save, Check, AlertCircle, Sparkles, Upload, X, CreditCard, Loader2,
 } from 'lucide-react';
 
-interface AppSetting {
-  id?: number;
-  key: string;
-  value: string;
-  description?: string;
+type AllSettings = ShopSettings & { notify_new_order: string; notify_new_message: string };
+type TabKey = 'general' | 'appearance' | 'seo' | 'shipping' | 'notifications' | 'integrations' | 'security';
+
+interface Status {
+  stripe: boolean; stripe_mode: string; paypal: boolean; sendgrid: boolean; cj: boolean;
+  email_from: string; admin_email: string; email_backend: string;
 }
 
-type TabKey = 'general' | 'payment' | 'shipping' | 'email' | 'notifications' | 'security' | 'integrations';
+const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
+  { key: 'general', label: 'Général', icon: Globe },
+  { key: 'appearance', label: 'Apparence', icon: Palette },
+  { key: 'seo', label: 'Référencement', icon: Sparkles },
+  { key: 'shipping', label: 'Livraison', icon: Truck },
+  { key: 'notifications', label: 'Notifications', icon: Bell },
+  { key: 'integrations', label: 'Intégrations', icon: Database },
+  { key: 'security', label: 'Sécurité', icon: Shield },
+];
+
+// Palettes proposées en un clic (couleur principale, couleur sombre)
+const PRESETS = [
+  { name: 'Or', primary: '#D4AF37', dark: '#0A0A0A' },
+  { name: 'Émeraude', primary: '#059669', dark: '#0B1F17' },
+  { name: 'Bleu nuit', primary: '#2563EB', dark: '#0F172A' },
+  { name: 'Rose', primary: '#DB2777', dark: '#1F0A16' },
+  { name: 'Terracotta', primary: '#C2410C', dark: '#1C1009' },
+  { name: 'Violet', primary: '#7C3AED', dark: '#150B2E' },
+];
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabKey>('general');
-  const [settings, setSettings] = useState<AppSetting[]>([]);
-  const [edits, setEdits] = useState<Record<string, string>>({});
-  const [newSetting, setNewSetting] = useState({ key: '', value: '', description: '' });
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [tab, setTab] = useState<TabKey>('general');
+  const [values, setValues] = useState<AllSettings | null>(null);
+  const [saved, setSaved] = useState<AllSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
 
-  const load = () => api.get('/settings/').then((r) => setSettings(r.data.results || r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api.get<AllSettings>('/settings/shop/').then((r) => { setValues(r.data); setSaved(r.data); }).catch(() => {});
+    api.get<Status>('/settings/status/').then((r) => setStatus(r.data)).catch(() => {});
+  }, []);
 
-  const showSuccess = (msg: string) => {
-    setSuccess(msg);
-    setTimeout(() => setSuccess(''), 3000);
+  const notify = (ok: boolean, text: string) => {
+    setToast({ ok, text });
+    setTimeout(() => setToast(null), 4000);
   };
 
-  const create = async () => {
-    if (!newSetting.key) return alert('Clé requise');
+  const set = (key: keyof AllSettings, value: string) => setValues((v) => (v ? { ...v, [key]: value } : v));
+  const dirty = !!values && !!saved && (Object.keys(values) as (keyof AllSettings)[]).some((k) => values[k] !== saved[k]);
+
+  const save = async () => {
+    if (!values || !saved) return;
+    const changes = Object.fromEntries((Object.keys(values) as (keyof AllSettings)[])
+      .filter((k) => values[k] !== saved[k]).map((k) => [k, values[k]]));
+    setSaving(true);
     try {
-      await api.post('/settings/', newSetting);
-      setNewSetting({ key: '', value: '', description: '' });
-      setShowAddForm(false);
-      load();
-      showSuccess('✅ Paramètre créé');
-    } catch { alert('Erreur'); }
+      const r = await api.post<AllSettings>('/settings/shop/', changes);
+      setValues(r.data); setSaved(r.data);
+      notify(true, 'Paramètres enregistrés. Le site est mis à jour en moins d\'une minute.');
+    } catch (e) {
+      notify(false, apiError(e).detail || 'Enregistrement impossible');
+    } finally { setSaving(false); }
   };
 
-  const update = async (key: string) => {
-    if (!(key in edits)) return;
-    try {
-      await api.patch(`/settings/${key}/`, { value: edits[key] });
-      setEdits((prev) => { const c = { ...prev }; delete c[key]; return c; });
-      load();
-      showSuccess('✅ Paramètre mis à jour');
-    } catch { alert('Erreur'); }
-  };
+  if (!values) return <div className="text-gray-500">Chargement des paramètres…</div>;
 
-  const remove = async (key: string) => {
-    if (!confirm(`Supprimer "${key}" ?`)) return;
-    await api.delete(`/settings/${key}/`);
-    load();
-    showSuccess('✅ Paramètre supprimé');
-  };
-
-  const TABS: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
-    { key: 'general', label: 'Général', icon: SettingsIcon, color: 'text-blue-600' },
-    { key: 'payment', label: 'Paiement', icon: CreditCard, color: 'text-emerald-600' },
-    { key: 'shipping', label: 'Livraison', icon: Truck, color: 'text-orange-600' },
-    { key: 'email', label: 'Email', icon: Mail, color: 'text-purple-600' },
-    { key: 'notifications', label: 'Notifications', icon: Bell, color: 'text-amber-600' },
-    { key: 'integrations', label: 'Intégrations', icon: Database, color: 'text-pink-600' },
-    { key: 'security', label: 'Sécurité', icon: Shield, color: 'text-red-600' },
-  ];
+  const field = (key: keyof AllSettings, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}, hint?: string) => (
+    <Field label={label} hint={hint}>
+      <input className="input" value={values[key]} onChange={(e) => set(key, e.target.value)} {...props} />
+    </Field>
+  );
 
   return (
     <div>
-      {/* HEADER */}
-      <div className="mb-8">
-        <h1 className="h1 flex items-center gap-3">
-          <SettingsIcon className="text-gold" size={32} />
-          Paramètres
-        </h1>
-        <p className="text-gray-500 mt-1">Gérez la configuration globale de votre boutique.</p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="h1 flex items-center gap-3"><SettingsIcon className="text-gold" size={32} /> Paramètres</h1>
+          <p className="text-gray-500 mt-1">Identité, apparence et fonctionnement de votre boutique.</p>
+        </div>
+        {tab !== 'integrations' && tab !== 'security' && (
+          <button onClick={save} disabled={!dirty || saving} className="btn-gold disabled:opacity-40">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {dirty ? 'Enregistrer les modifications' : 'Tout est enregistré'}
+          </button>
+        )}
       </div>
 
-      {/* TOAST SUCCESS */}
-      {success && (
-        <div className="fixed top-20 right-6 z-50 bg-emerald-500 text-white px-6 py-3 rounded-xl shadow-2xl animate-slide-up flex items-center gap-2">
-          <Check size={18} /> {success}
+      {toast && (
+        <div className={`fixed top-20 right-6 z-50 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-2 max-w-md ${toast.ok ? 'bg-emerald-600' : 'bg-red-600'}`}>
+          {toast.ok ? <Check size={18} /> : <AlertCircle size={18} />} {toast.text}
         </div>
       )}
 
       <div className="grid lg:grid-cols-4 gap-6">
-        {/* SIDEBAR TABS */}
         <aside className="lg:col-span-1">
-          <div className="card sticky top-24">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3 px-2">
-              Catégories
-            </p>
-            <nav className="space-y-1">
-              {TABS.map((tab) => {
-                const Icon = tab.icon;
-                const active = activeTab === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                      active
-                        ? 'bg-gold/10 text-gold border-l-4 border-gold'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon size={18} className={active ? 'text-gold' : tab.color} />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
+          <nav className="card lg:sticky lg:top-24 space-y-1">
+            {TABS.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  tab === key ? 'bg-gold/10 text-gold border-l-4 border-gold' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Icon size={18} /> {label}
+              </button>
+            ))}
+          </nav>
         </aside>
 
-        {/* CONTENU */}
         <div className="lg:col-span-3 space-y-6">
-          {/* === GÉNÉRAL === */}
-          {activeTab === 'general' && (
+          {tab === 'general' && (
             <>
-              <Section title="Informations de la boutique" icon={Globe} description="Configuration générale de votre boutique en ligne">
+              <Section title="Boutique" icon={Globe} description="Ces informations apparaissent sur tout le site (en-tête, pied de page, contact, emails).">
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <Field label="Nom de la boutique">
-                    <input className="input" defaultValue="Global Luxe" />
-                  </Field>
-                  <Field label="Email de contact">
-                    <input type="email" className="input" defaultValue="contact@globalluxe.com" />
-                  </Field>
-                  <Field label="Devise par défaut">
-                    <select className="input">
-                      <option>EUR (€)</option>
-                      <option>USD ($)</option>
-                      <option>GBP (£)</option>
-                    </select>
-                  </Field>
-                  <Field label="Fuseau horaire">
-                    <select className="input">
-                      <option>Europe/Paris (UTC+1)</option>
-                      <option>America/New_York (UTC-5)</option>
-                      <option>Asia/Tokyo (UTC+9)</option>
-                    </select>
-                  </Field>
-                  <Field label="Langue par défaut">
-                    <select className="input">
-                      <option>Français</option>
-                      <option>English</option>
-                      <option>Español</option>
-                    </select>
-                  </Field>
-                  <Field label="Pays">
-                    <input className="input" defaultValue="France" />
-                  </Field>
-                </div>
-                <div className="mt-6 flex justify-end">
-                  <button onClick={() => showSuccess('Paramètres généraux sauvegardés')} className="btn-gold">
-                    <Save size={16} /> Sauvegarder
-                  </button>
+                  {field('shop_name', 'Nom de la boutique')}
+                  {field('shop_tagline', 'Slogan', {}, 'Affiché dans le bandeau défilant de l\'accueil')}
+                  {field('contact_email', 'Email de contact', { type: 'email' })}
+                  {field('contact_phone', 'Téléphone', { type: 'tel' }, 'Laisser vide pour ne pas l\'afficher')}
                 </div>
               </Section>
-
-              <Section title="SEO & Métadonnées" icon={Sparkles} description="Optimisation pour les moteurs de recherche">
-                <div className="space-y-4">
-                  <Field label="Meta Title (max 60 caractères)">
-                    <input className="input" defaultValue="Global Luxe - Premium Marketplace" />
-                  </Field>
-                  <Field label="Meta Description (max 160 caractères)">
-                    <textarea className="input" rows={3} defaultValue="Découvrez notre sélection exclusive de produits premium." />
-                  </Field>
-                  <Field label="Mots-clés (séparés par virgules)">
-                    <input className="input" defaultValue="luxe, premium, marketplace, dropshipping" />
-                  </Field>
+              <Section title="Réseaux sociaux" icon={Globe} description="Lien complet du profil. Un réseau laissé vide n'est pas affiché dans le pied de page.">
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {field('social_instagram', 'Instagram', { placeholder: 'https://instagram.com/…' })}
+                  {field('social_facebook', 'Facebook', { placeholder: 'https://facebook.com/…' })}
+                  {field('social_tiktok', 'TikTok', { placeholder: 'https://tiktok.com/@…' })}
+                </div>
+              </Section>
+              <Section title="Informations légales" icon={Shield} description="Utilisées par les pages Mentions légales et CGV.">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {field('legal_name', 'Raison sociale', {}, 'Si vide, le nom de la boutique est utilisé')}
+                  {field('legal_id', 'N° d\'immatriculation (SIRET, RCCM…)')}
+                  {field('legal_address', 'Adresse du siège')}
+                  {field('legal_host', 'Hébergeur du site', { placeholder: 'ex. Vercel Inc., 340 S Lemon Ave, Walnut, CA' })}
                 </div>
               </Section>
             </>
           )}
 
-          {/* === PAIEMENT === */}
-          {activeTab === 'payment' && (
-            <>
-              <Section
-                title="Stripe"
-                icon={CreditCard}
-                description="Configuration des paiements par carte bancaire"
-                badge={<span className="badge badge-success">Connecté</span>}
-              >
-                <div className="space-y-4">
-                  <SecureField
-                    label="Clé publique Stripe"
-                    value="pk_test_xxxxxxxxxxxxxxxxxxxxx"
-                    keyName="stripe_public"
-                    show={showKey['stripe_public']}
-                    onToggle={() => setShowKey({ ...showKey, stripe_public: !showKey['stripe_public'] })}
-                  />
-                  <SecureField
-                    label="Clé secrète Stripe"
-                    value="sk_test_xxxxxxxxxxxxxxxxxxxxx"
-                    keyName="stripe_secret"
-                    show={showKey['stripe_secret']}
-                    onToggle={() => setShowKey({ ...showKey, stripe_secret: !showKey['stripe_secret'] })}
-                  />
-                  <Field label="Webhook URL">
-                    <div className="flex gap-2">
-                      <input
-                        className="input font-mono text-sm"
-                        defaultValue="https://votreapi.com/webhooks/stripe"
-                        readOnly
-                      />
-                      <button className="btn-secondary">📋 Copier</button>
-                    </div>
-                  </Field>
-                </div>
-              </Section>
+          {tab === 'appearance' && <Appearance values={values} set={set} onError={(t) => notify(false, t)} />}
 
-              <Section
-                title="PayPal"
-                icon={CreditCard}
-                description="Configuration PayPal"
-                badge={<span className="badge badge-warning">Non configuré</span>}
-              >
-                <div className="space-y-4">
-                  <Field label="Client ID PayPal">
-                    <input className="input" placeholder="AeXXXXXXXXXXXXXXXXXX" />
-                  </Field>
-                  <Field label="Secret PayPal">
-                    <input type="password" className="input" placeholder="••••••••••••••" />
-                  </Field>
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="w-4 h-4 accent-gold" />
-                      <span className="text-sm">Mode sandbox (test)</span>
-                    </label>
-                  </div>
-                </div>
-              </Section>
-            </>
-          )}
-
-          {/* === LIVRAISON === */}
-          {activeTab === 'shipping' && (
-            <Section title="Configuration des livraisons" icon={Truck} description="Paramètres globaux d'expédition">
+          {tab === 'seo' && (
+            <Section title="Référencement (Google)" icon={Sparkles} description="Titre et description affichés dans les résultats de recherche et l'onglet du navigateur.">
               <div className="space-y-4">
-                <Field label="Délai standard estimé">
-                  <select className="input">
-                    <option>7-14 jours</option>
-                    <option>3-7 jours</option>
-                    <option>14-21 jours</option>
-                  </select>
+                <Field label={`Titre (${values.meta_title.length}/60 caractères)`}>
+                  <input className="input" maxLength={70} value={values.meta_title} onChange={(e) => set('meta_title', e.target.value)} />
                 </Field>
-                <Field label="Seuil de livraison gratuite (€)">
-                  <input type="number" className="input font-mono" defaultValue="50" />
+                <Field label={`Description (${values.meta_description.length}/160 caractères)`}>
+                  <textarea className="input" rows={3} maxLength={200} value={values.meta_description} onChange={(e) => set('meta_description', e.target.value)} />
                 </Field>
-                <Field label="Frais de port par défaut (€)">
-                  <input type="number" step="0.01" className="input font-mono" defaultValue="9.99" />
-                </Field>
-                <p className="text-sm text-gray-500 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  ℹ️ Pour gérer les méthodes de livraison détaillées, allez sur la page <a href="/admin/livraison" className="text-blue-600 hover:underline font-semibold">Shipping</a>.
-                </p>
+                <div className="rounded-xl border border-gray-200 p-4 bg-white">
+                  <p className="text-xs text-gray-500 mb-1">Aperçu Google</p>
+                  <p className="text-[#1a0dab] text-lg leading-tight truncate">{values.meta_title || values.shop_name}</p>
+                  <p className="text-sm text-gray-600 line-clamp-2">{values.meta_description}</p>
+                </div>
               </div>
             </Section>
           )}
 
-          {/* === EMAIL === */}
-          {activeTab === 'email' && (
-            <Section title="Configuration Email (SendGrid)" icon={Mail} description="Paramètres d'envoi d'emails transactionnels">
-              <div className="space-y-4">
-                <SecureField
-                  label="Clé API SendGrid"
-                  value="SG.xxxxxxxxxxxxxxxxxxxxx"
-                  keyName="sendgrid"
-                  show={showKey['sendgrid']}
-                  onToggle={() => setShowKey({ ...showKey, sendgrid: !showKey['sendgrid'] })}
-                />
-                <Field label="Email expéditeur">
-                  <input type="email" className="input" defaultValue="noreply@globalluxe.com" />
-                </Field>
-                <Field label="Nom expéditeur">
-                  <input className="input" defaultValue="Global Luxe" />
-                </Field>
-                <Field label="Email admin (notifications)">
-                  <input type="email" className="input" defaultValue="admin@globalluxe.com" />
-                </Field>
-                <button className="btn-secondary mt-2">
-                  📧 Envoyer un email de test
-                </button>
+          {tab === 'shipping' && (
+            <Section title="Livraison et retours" icon={Truck} description="Affichés sur la fiche produit, le suivi de commande, la FAQ et les CGV.">
+              <div className="grid sm:grid-cols-2 gap-4">
+                {field('delivery_days', 'Délai de livraison', { placeholder: '7 à 12 jours ouvrés' })}
+                {field('return_days', 'Délai de retour (jours)', { type: 'number', min: 14 }, 'Minimum légal en France : 14 jours')}
+                {field('free_shipping_threshold', 'Livraison gratuite dès (€)', { type: 'number', min: 0, step: '0.01' }, 'Laisser vide pour désactiver')}
               </div>
+              <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                Les modes de livraison et leurs prix se gèrent sur la page <Link href="/admin/livraison" className="text-blue-700 font-semibold hover:underline">Livraison</Link>.
+              </p>
             </Section>
           )}
 
-          {/* === NOTIFICATIONS === */}
-          {activeTab === 'notifications' && (
-            <Section title="Préférences de notifications" icon={Bell} description="Choisissez quand recevoir des alertes">
-              <div className="space-y-3">
-                {[
-                  { label: 'Nouvelle commande', desc: 'Recevoir un email à chaque commande' },
-                  { label: 'Stock faible', desc: 'Alerte quand un produit a moins de 10 unités' },
-                  { label: 'Nouveau message client', desc: 'Notification pour chaque message' },
-                  { label: 'Rapport hebdomadaire', desc: 'Résumé des ventes chaque lundi' },
-                  { label: 'Mises à jour CJ', desc: 'Statut des commandes envoyées à CJ' },
-                ].map((item, i) => (
-                  <label key={i} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition">
-                    <div>
-                      <p className="font-semibold text-sm">{item.label}</p>
-                      <p className="text-xs text-gray-500">{item.desc}</p>
-                    </div>
-                    <input type="checkbox" defaultChecked className="w-5 h-5 accent-gold" />
+          {tab === 'notifications' && (
+            <Section title="Emails reçus par l'administrateur" icon={Bell} description={`Envoyés à ${status?.admin_email || 'l\'email admin du fichier .env'}.`}>
+              <div className="space-y-2">
+                {([
+                  ['notify_new_order', 'Nouvelle commande', 'Un email à chaque commande passée'],
+                  ['notify_new_message', 'Nouveau message', 'Un email à chaque message du formulaire de contact'],
+                ] as const).map(([key, label, desc]) => (
+                  <label key={key} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
+                    <span><span className="font-semibold text-sm block">{label}</span><span className="text-xs text-gray-500">{desc}</span></span>
+                    <input type="checkbox" className="w-5 h-5 accent-gold" checked={values[key] === 'true'} onChange={(e) => set(key, String(e.target.checked))} />
                   </label>
                 ))}
+                <p className="text-xs text-gray-500 px-3">Les clients reçoivent toujours la confirmation de commande et les changements de statut.</p>
               </div>
             </Section>
           )}
 
-          {/* === INTÉGRATIONS === */}
-          {activeTab === 'integrations' && (
-            <>
-              <Section
-                title="CJ Dropshipping"
-                icon={Database}
-                description="Intégration avec CJ Dropshipping API v2"
-                badge={<span className="badge badge-success">Connecté</span>}
-              >
-                <div className="space-y-4">
-                  <Field label="Email du compte CJ">
-                    <input type="email" className="input" defaultValue="votre@email.com" />
-                  </Field>
-                  <SecureField
-                    label="Clé API CJ"
-                    value="cj_api_xxxxxxxxxxxxxxxxxxxxx"
-                    keyName="cj"
-                    show={showKey['cj']}
-                    onToggle={() => setShowKey({ ...showKey, cj: !showKey['cj'] })}
-                  />
-                  <div className="flex gap-2 mt-4">
-                    <button className="btn-gold">🔄 Tester la connexion</button>
-                    <button className="btn-secondary">📦 Synchroniser produits</button>
-                  </div>
-                </div>
-              </Section>
+          {tab === 'integrations' && <Integrations status={status} notify={notify} />}
 
-              {/* PARAMÈTRES DYNAMIQUES (depuis BDD) */}
-              <Section
-                title="Paramètres avancés"
-                icon={Key}
-                description="Clés-valeurs personnalisées"
-                action={
-                  <button onClick={() => setShowAddForm(!showAddForm)} className="btn-gold !text-xs !py-2">
-                    <Plus size={14} /> Ajouter
-                  </button>
-                }
-              >
-                {showAddForm && (
-                  <div className="card bg-gray-50 border-dashed mb-4 animate-slide-up">
-                    <div className="grid sm:grid-cols-3 gap-3">
-                      <input
-                        placeholder="Clé (ex: currency)"
-                        value={newSetting.key}
-                        onChange={(e) => setNewSetting({ ...newSetting, key: e.target.value })}
-                        className="input"
-                      />
-                      <input
-                        placeholder="Valeur"
-                        value={newSetting.value}
-                        onChange={(e) => setNewSetting({ ...newSetting, value: e.target.value })}
-                        className="input"
-                      />
-                      <input
-                        placeholder="Description"
-                        value={newSetting.description}
-                        onChange={(e) => setNewSetting({ ...newSetting, description: e.target.value })}
-                        className="input"
-                      />
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={create} className="btn-gold">
-                        <Save size={14} /> Ajouter
-                      </button>
-                      <button onClick={() => setShowAddForm(false)} className="btn-secondary">
-                        Annuler
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {settings.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">
-                    Aucun paramètre personnalisé
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {settings.map((s) => (
-                      <div key={s.key} className="card bg-gray-50/50 border-gray-200 hover:bg-white transition">
-                        <div className="grid sm:grid-cols-4 gap-3 items-center">
-                          <div>
-                            <p className="font-bold text-sm font-mono">{s.key}</p>
-                            {s.description && <p className="text-xs text-gray-500 mt-1">{s.description}</p>}
-                          </div>
-                          <input
-                            type="text"
-                            defaultValue={s.value}
-                            onChange={(e) => setEdits({ ...edits, [s.key]: e.target.value })}
-                            className="input sm:col-span-2 !min-h-[36px] !py-1.5"
-                          />
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() => update(s.key)}
-                              disabled={!(s.key in edits)}
-                              className="btn-gold !text-xs !py-2 !px-3 disabled:opacity-30"
-                            >
-                              <Save size={12} />
-                            </button>
-                            <button onClick={() => remove(s.key)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Section>
-            </>
-          )}
-
-          {/* === SÉCURITÉ === */}
-          {activeTab === 'security' && (
-            <Section title="Sécurité du compte" icon={Shield} description="Protection et accès administrateur">
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-bold mb-3">Changer le mot de passe</h4>
-                  <div className="space-y-3">
-                    <Field label="Mot de passe actuel">
-                      <input type="password" className="input" />
-                    </Field>
-                    <Field label="Nouveau mot de passe">
-                      <input type="password" className="input" />
-                    </Field>
-                    <Field label="Confirmer le nouveau mot de passe">
-                      <input type="password" className="input" />
-                    </Field>
-                    <button className="btn-gold mt-2">
-                      <Shield size={14} /> Mettre à jour
-                    </button>
-                  </div>
-                </div>
-
-                <hr className="border-gray-200" />
-
-                <div>
-                  <h4 className="font-bold mb-3">Sessions actives</h4>
-                  <div className="card bg-emerald-50 border-emerald-200 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">💻 Chrome — Windows</p>
-                      <p className="text-xs text-gray-600">Paris, France — Active maintenant</p>
-                    </div>
-                    <span className="badge badge-success">Actuelle</span>
-                  </div>
-                </div>
-
-                <hr className="border-gray-200" />
-
-                <div>
-                  <h4 className="font-bold mb-3 text-red-600">Zone dangereuse</h4>
-                  <div className="card bg-red-50 border-red-200">
-                    <p className="text-sm text-gray-700 mb-3">
-                      Supprimer toutes les données et réinitialiser le compte. <strong>Cette action est irréversible.</strong>
-                    </p>
-                    <button className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition">
-                      🗑️ Réinitialiser le compte
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </Section>
-          )}
+          {tab === 'security' && <Security notify={notify} />}
         </div>
       </div>
     </div>
@@ -484,81 +208,245 @@ export default function SettingsPage() {
 }
 
 // ============================================
-// COMPOSANTS HELPERS
+// APPARENCE : couleurs, logo, aperçu en direct
 // ============================================
+function Appearance({ values, set, onError }: {
+  values: AllSettings;
+  set: (key: keyof AllSettings, value: string) => void;
+  onError: (text: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const primary = HEX.test(values.color_primary) ? values.color_primary : '#D4AF37';
+  const dark = HEX.test(values.color_dark) ? values.color_dark : '#0A0A0A';
 
-interface SectionProps {
-  title: string;
-  icon: React.ElementType;
-  description?: string;
-  children: React.ReactNode;
-  badge?: React.ReactNode;
-  action?: React.ReactNode;
+  const uploadLogo = async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('name', `logo-${file.name}`);
+    setUploading(true);
+    try {
+      const r = await api.post('/media/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      set('logo_url', r.data.file);
+    } catch {
+      onError('Envoi du logo impossible');
+    } finally { setUploading(false); }
+  };
+
+  return (
+    <>
+      <Section title="Couleurs" icon={Palette} description="Appliquées à tout le site : boutons, liens, badges, pied de page, admin.">
+        <p className="text-sm font-semibold text-gray-700 mb-2">Palettes prêtes à l&apos;emploi</p>
+        <div className="flex flex-wrap gap-2 mb-6">
+          {PRESETS.map((p) => (
+            <button
+              key={p.name}
+              onClick={() => { set('color_primary', p.primary); set('color_dark', p.dark); }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                primary.toLowerCase() === p.primary.toLowerCase() ? 'border-gray-900' : 'border-gray-200 hover:border-gray-400'
+              }`}
+            >
+              <span className="w-5 h-5 rounded-full border border-black/10" style={{ background: p.primary }} />
+              <span className="w-5 h-5 rounded-full border border-black/10 -ml-3" style={{ background: p.dark }} />
+              {p.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <ColorField label="Couleur principale" hint="Boutons, liens, accents" value={values.color_primary} onChange={(v) => set('color_primary', v)} />
+          <ColorField label="Couleur sombre" hint="Pied de page, page de connexion, textes forts" value={values.color_dark} onChange={(v) => set('color_dark', v)} />
+        </div>
+
+        {/* Aperçu */}
+        <p className="text-sm font-semibold text-gray-700 mt-6 mb-2">Aperçu</p>
+        <div className="rounded-2xl overflow-hidden border border-gray-200">
+          <div className="bg-white px-5 py-4 flex items-center justify-between border-b border-gray-100">
+            {values.logo_url
+              ? <img src={values.logo_url} alt="" className="h-8 w-auto" />
+              : <span className="font-serif font-black uppercase tracking-wider" style={{ color: primary }}>{values.shop_name}</span>}
+            <span className="text-sm" style={{ color: dark }}>Accueil · Catégories · Contact</span>
+          </div>
+          <div className="bg-gray-50 px-5 py-6 flex flex-wrap items-center gap-3">
+            <span className="px-5 py-2.5 rounded-xl font-bold text-sm" style={{ background: primary, color: dark }}>Ajouter au panier</span>
+            <span className="px-5 py-2.5 rounded-xl font-bold text-sm border-2" style={{ borderColor: dark, color: dark }}>Voir le produit</span>
+            <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: shade(primary, 0.85), color: shade(primary, -0.35) }}>Nouveau</span>
+            <span className="text-sm font-semibold underline" style={{ color: primary }}>Un lien</span>
+          </div>
+          <div className="px-5 py-4 text-sm flex justify-between" style={{ background: dark, color: '#9CA3AF' }}>
+            <span style={{ color: primary }} className="font-bold uppercase">{values.shop_name}</span>
+            <span>Pied de page</span>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Logo" icon={Upload} description="PNG transparent ou SVG, environ 400 × 120 px. Sans logo, le nom de la boutique est affiché.">
+        <div className="flex flex-col sm:flex-row gap-4 items-start">
+          <div className="w-48 h-24 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] bg-[length:16px_16px]">
+            {values.logo_url ? <img src={values.logo_url} alt="Logo" className="max-h-20 max-w-44 object-contain" /> : <span className="text-xs text-gray-400">Aucun logo</span>}
+          </div>
+          <div className="space-y-2 flex-1 w-full">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+            <div className="flex gap-2">
+              <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-secondary">
+                {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Envoyer une image
+              </button>
+              {values.logo_url && (
+                <button onClick={() => set('logo_url', '')} className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1">
+                  <X size={14} /> Retirer
+                </button>
+              )}
+            </div>
+            <input className="input text-sm" placeholder="…ou collez l'URL d'une image" value={values.logo_url} onChange={(e) => set('logo_url', e.target.value)} />
+            <p className="text-xs text-gray-500">Le logo sert aussi d&apos;icône d&apos;onglet du navigateur.</p>
+          </div>
+        </div>
+      </Section>
+    </>
+  );
 }
 
-function Section({ title, icon: Icon, description, children, badge, action }: SectionProps) {
+function ColorField({ label, hint, value, onChange }: { label: string; hint: string; value: string; onChange: (v: string) => void }) {
+  const valid = HEX.test(value);
   return (
-    <div className="card animate-fade-in">
-      <div className="flex items-start justify-between mb-6 pb-4 border-b border-gray-100">
+    <Field label={label} hint={hint}>
+      <div className="flex gap-2 items-center">
+        <input type="color" value={valid ? value : '#000000'} onChange={(e) => onChange(e.target.value.toUpperCase())} className="w-12 h-11 rounded-lg border border-gray-200 cursor-pointer p-1 bg-white" />
+        <input className={`input font-mono uppercase ${valid ? '' : '!border-red-400'}`} value={value} maxLength={7} onChange={(e) => onChange(e.target.value)} />
+      </div>
+      {!valid && <p className="text-xs text-red-500 mt-1">Format attendu : #RRGGBB</p>}
+    </Field>
+  );
+}
+
+// ============================================
+// INTÉGRATIONS : état réel + tests
+// ============================================
+function Integrations({ status, notify }: { status: Status | null; notify: (ok: boolean, text: string) => void }) {
+  const [testing, setTesting] = useState('');
+  const [testTo, setTestTo] = useState('');
+
+  const test = async (name: string, url: string, body = {}) => {
+    setTesting(name);
+    try {
+      const r = await api.post(url, body);
+      notify(true, r.data.detail);
+    } catch (e) {
+      notify(false, apiError(e).detail || 'Test impossible');
+    } finally { setTesting(''); }
+  };
+
+  const badge = (ok?: boolean) => ok
+    ? <span className="badge badge-success">Configuré</span>
+    : <span className="badge badge-warning">Non configuré</span>;
+
+  return (
+    <>
+      <p className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+        Par sécurité, les clés secrètes ne sont jamais modifiables depuis le navigateur : elles se renseignent dans le fichier <code className="font-mono">backend/.env</code> du serveur.
+      </p>
+
+      <Section title="CJ Dropshipping" icon={Database} description="Variables CJ_EMAIL et CJ_API_KEY" badge={badge(status?.cj)}>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => test('cj', '/settings/test_cj/')} disabled={!!testing} className="btn-gold">
+            {testing === 'cj' ? <Loader2 size={14} className="animate-spin" /> : null} Tester la connexion
+          </button>
+          <Link href="/admin/produits" className="btn-secondary">Importer des produits</Link>
+        </div>
+      </Section>
+
+      <Section title="Emails" icon={Mail} description={`Envoi via : ${status?.email_backend || '…'} — expéditeur ${status?.email_from || ''}`} badge={badge(status?.sendgrid)}>
+        {!status?.sendgrid && (
+          <p className="text-xs text-gray-500 mb-3">Sans SENDGRID_API_KEY, les emails ne partent pas : ils s&apos;affichent dans le terminal du backend.</p>
+        )}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input type="email" className="input" placeholder={status?.admin_email || 'destinataire@exemple.com'} value={testTo} onChange={(e) => setTestTo(e.target.value)} />
+          <button onClick={() => test('email', '/settings/test_email/', testTo ? { to: testTo } : {})} disabled={!!testing} className="btn-secondary whitespace-nowrap">
+            {testing === 'email' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} Envoyer un email de test
+          </button>
+        </div>
+      </Section>
+
+      <Section title="Paiement" icon={CreditCard} description="Stripe (STRIPE_PUBLIC_KEY, STRIPE_SECRET_KEY) et PayPal (PAYPAL_CLIENT_ID, PAYPAL_SECRET)">
+        <div className="space-y-2 text-sm">
+          <p className="flex justify-between">Stripe {status?.stripe ? <span className="badge badge-success">Clés présentes ({status.stripe_mode})</span> : badge(false)}</p>
+          <p className="flex justify-between">PayPal {badge(status?.paypal)}</p>
+          <p className="text-xs text-gray-500 pt-2">Le paiement en ligne n&apos;est pas encore branché au tunnel de commande.</p>
+        </div>
+      </Section>
+    </>
+  );
+}
+
+// ============================================
+// SÉCURITÉ : changement de mot de passe
+// ============================================
+function Security({ notify }: { notify: (ok: boolean, text: string) => void }) {
+  const [form, setForm] = useState({ current: '', next: '', confirm: '' });
+  const [busy, setBusy] = useState(false);
+  const mismatch = form.confirm.length > 0 && form.next !== form.confirm;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mismatch) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/auth/change-password/', { current_password: form.current, new_password: form.next });
+      notify(true, r.data.detail);
+      setForm({ current: '', next: '', confirm: '' });
+    } catch (err) {
+      notify(false, apiError(err).detail || 'Changement impossible');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Section title="Mot de passe administrateur" icon={Shield} description="Au moins 8 caractères, pas uniquement des chiffres, pas un mot de passe courant.">
+      <form onSubmit={submit} className="space-y-3 max-w-md">
+        <Field label="Mot de passe actuel"><input type="password" className="input" required autoComplete="current-password" value={form.current} onChange={(e) => setForm({ ...form, current: e.target.value })} /></Field>
+        <Field label="Nouveau mot de passe"><input type="password" className="input" required minLength={8} autoComplete="new-password" value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} /></Field>
+        <Field label="Confirmer le nouveau mot de passe">
+          <input type="password" className="input" required autoComplete="new-password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} />
+          {mismatch && <p className="text-xs text-red-500 mt-1">Les deux mots de passe sont différents.</p>}
+        </Field>
+        <button type="submit" disabled={busy || mismatch} className="btn-gold">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} Mettre à jour
+        </button>
+      </form>
+    </Section>
+  );
+}
+
+// ============================================
+// COMPOSANTS COMMUNS
+// ============================================
+function Section({ title, icon: Icon, description, children, badge }: {
+  title: string; icon: React.ElementType; description?: string; children: React.ReactNode; badge?: React.ReactNode;
+}) {
+  return (
+    <div className="card">
+      <div className="flex items-start justify-between gap-3 mb-6 pb-4 border-b border-gray-100">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-lg bg-gold/10 flex items-center justify-center flex-shrink-0">
             <Icon size={20} className="text-gold" />
           </div>
           <div>
-            <h3 className="font-bold text-lg flex items-center gap-2">
-              {title}
-              {badge}
-            </h3>
+            <h3 className="font-bold text-lg">{title}</h3>
             {description && <p className="text-sm text-gray-500 mt-0.5">{description}</p>}
           </div>
         </div>
-        {action}
+        {badge}
       </div>
       {children}
     </div>
   );
 }
 
-interface FieldProps {
-  label: string;
-  children: React.ReactNode;
-}
-
-function Field({ label, children }: FieldProps) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">{label}</label>
       {children}
+      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
     </div>
-  );
-}
-
-interface SecureFieldProps {
-  label: string;
-  value: string;
-  keyName: string;
-  show: boolean;
-  onToggle: () => void;
-}
-
-function SecureField({ label, value, show, onToggle }: SecureFieldProps) {
-  return (
-    <Field label={label}>
-      <div className="relative">
-        <input
-          type={show ? 'text' : 'password'}
-          value={value}
-          readOnly
-          className="input font-mono pr-12"
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-        >
-          {show ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
-      </div>
-    </Field>
   );
 }

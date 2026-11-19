@@ -7,6 +7,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import Cookies from 'js-cookie';
+import { useShop } from '@/components/ShopProvider';
 
 const MENU = [
   { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export default function Sidebar({ isOpen = false, onClose = () => {} }: Props) {
+  const shop = useShop();
   const path = usePathname();
   const router = useRouter();
 
@@ -60,7 +62,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }: Props) {
               <Sparkles size={20} className="text-white" />
             </div>
             <div>
-              <p className="font-serif text-lg font-black leading-tight">GLOBAL LUXE</p>
+              <p className="font-serif text-lg font-black leading-tight uppercase truncate max-w-[140px]">{shop.shop_name}</p>
               <p className="text-[10px] text-gray-500 uppercase tracking-wider">Admin Panel</p>
             </div>
           </Link>

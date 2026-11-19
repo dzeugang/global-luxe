@@ -73,6 +73,20 @@ class ProductViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAdminUser()]
 
+    def destroy(self, request, *args, **kwargs):
+        product = self.get_object()
+        if product.orderitem_set.exists():
+            # Un produit déjà commandé doit rester pour l'historique : on le désactive
+            product.is_active = False
+            product.save(update_fields=['is_active'])
+            return Response(
+                {'detail': 'Ce produit figure dans des commandes : il a été désactivé au lieu d\'être supprimé.',
+                 'deactivated': True},
+                status=200,
+            )
+        product.delete()
+        return Response(status=204)
+
     @action(detail=False, methods=['get'])
     def featured(self, request):
         products = self.get_queryset().filter(is_featured=True)[:8]

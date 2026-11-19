@@ -3,12 +3,12 @@ from django.db import models
 
 class Order(models.Model):
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('processing', 'Processing'),
-        ('sent_to_cj', 'Sent to CJ'),
-        ('shipped', 'Shipped'),
-        ('delivered', 'Delivered'),
-        ('cancelled', 'Cancelled'),
+        ('pending', 'En attente'),
+        ('processing', 'En préparation'),
+        ('sent_to_cj', 'Transmise au fournisseur'),
+        ('shipped', 'Expédiée'),
+        ('delivered', 'Livrée'),
+        ('cancelled', 'Annulée'),
     ]
     PAYMENT_METHODS = [
         ('stripe', 'Stripe'),
@@ -55,6 +55,11 @@ class OrderItem(models.Model):
     product = models.ForeignKey('products.Product', on_delete=models.PROTECT)
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    options = models.JSONField(default=dict, blank=True)  # ex. {"Couleur": "Noir", "Taille": "M"}
+
+    @property
+    def options_label(self):
+        return ', '.join(f'{k} : {v}' for k, v in (self.options or {}).items())
 
     @property
     def total(self):

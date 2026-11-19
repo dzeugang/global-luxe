@@ -2,8 +2,12 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useCart } from '@/store/cart';
+import { useCart, optionsLabel } from '@/store/cart';
+import { useShop } from '@/components/ShopProvider';
+import { useHydrated } from '@/lib/useHydrated';
+import axios from 'axios';
 import { api } from '@/lib/api';
+import { rememberLastOrder } from '@/lib/orders';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import type { ShippingMethod } from '@/types';
@@ -34,8 +38,13 @@ export default function CheckoutPage() {
     defaultValues: { payment_method: 'stripe', country: 'France' },
   });
 
+  const shop = useShop();
+  const hydrated = useHydrated();
   const selectedMethod = watch('shipping_method_id');
-  const shippingCost = methods.find((m) => m.id === Number(selectedMethod))?.price || 0;
+  // Même règle que le serveur : livraison offerte au-delà du seuil défini dans les Paramètres
+  const threshold = Number(shop.free_shipping_threshold) || 0;
+  const freeShipping = threshold > 0 && subtotal() >= threshold;
+  const shippingCost = freeShipping ? 0 : methods.find((m) => m.id === Number(selectedMethod))?.price || 0;
   const total = subtotal() + Number(shippingCost);
 
   useEffect(() => {
@@ -49,20 +58,25 @@ export default function CheckoutPage() {
       const payload = {
         ...data,
         shipping_method_id: data.shipping_method_id ? Number(data.shipping_method_id) : null,
-        items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity })),
+        items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity, options: i.options })),
       };
       const res = await api.post('/orders/', payload);
+      rememberLastOrder(res.data.id, data.customer_email);
       clear();
-      router.push(`/confirmation?order=${res.data.id}`);
-    } catch (e: any) {
+      router.push('/confirmation');
+    } catch (e) {
       // Afficher les erreurs de validation du backend (stock, pays, produit indisponible…)
-      const data = e.response?.data;
+      const data = axios.isAxiosError(e) ? e.response?.data : undefined;
       const fieldErrors = data && typeof data === 'object' && !data.detail
         ? Object.values(data).flat().filter((m) => typeof m === 'string').join(' ')
         : '';
       setError(data?.detail || fieldErrors || 'Erreur lors de la commande');
     } finally { setLoading(false); }
   };
+
+  if (!hydrated) {
+    return <div className="container-app py-12 text-center text-gray-400">Chargement…</div>;
+  }
 
   if (items.length === 0) {
     return <div className="container-app py-12 text-center">Votre panier est vide.</div>;
@@ -98,7 +112,7 @@ export default function CheckoutPage() {
             </Field>
           </div>
 
-          <h2 className="font-bold text-base sm:text-lg mt-4 sm:mt-6">Méthode d'expédition</h2>
+          <h2 className="font-bold text-base sm:text-lg mt-4 sm:mt-6">Méthode d&apos;expédition</h2>
           <div className="space-y-2">
             {methods.map((m) => (
               <label key={m.id} className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
@@ -129,15 +143,18 @@ export default function CheckoutPage() {
           <h2 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">Résumé</h2>
           <div className="max-h-60 overflow-y-auto mb-3">
             {items.map((i) => (
-              <div key={i.product.id} className="flex justify-between text-xs sm:text-sm mb-2">
-                <span className="truncate pr-2">{i.product.name} × {i.quantity}</span>
-                <span className="whitespace-nowrap">{(i.product.sale_price * i.quantity).toFixed(2)} €</span>
+              <div key={i.key} className="flex justify-between text-xs sm:text-sm mb-2">
+                <span className="truncate pr-2">
+                  {i.product.name} × {i.quantity}
+                  {Object.keys(i.options).length > 0 && <span className="block text-gray-500">{optionsLabel(i.options)}</span>}
+                </span>
+                <span className="whitespace-nowrap">{(i.unitPrice * i.quantity).toFixed(2)} €</span>
               </div>
             ))}
           </div>
           <div className="border-t pt-3 text-sm space-y-2">
             <div className="flex justify-between"><span>Sous-total</span><span>{subtotal().toFixed(2)} €</span></div>
-            <div className="flex justify-between"><span>Livraison</span><span>{Number(shippingCost).toFixed(2)} €</span></div>
+            <div className="flex justify-between"><span>Livraison</span><span>{freeShipping ? 'Offerte' : `${Number(shippingCost).toFixed(2)} €`}</span></div>
             <div className="flex justify-between font-bold text-base sm:text-lg pt-2 border-t">
               <span>Total</span><span>{total.toFixed(2)} €</span>
             </div>

@@ -4,8 +4,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from django.core.mail import send_mail
 from django.conf import settings
+import logging
+
+from apps.settings_app.store import is_enabled
 from .models import Message
-from .serializers import MessageSerializer
+from .serializers import MessageSerializer, ContactMessageSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -24,6 +29,23 @@ class MessageViewSet(viewsets.ModelViewSet):
     """
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ContactMessageSerializer
+        return MessageSerializer
+
+    def perform_create(self, serializer):
+        msg = serializer.save()
+        if is_enabled('notify_new_message'):
+            try:
+                send_mail(
+                    f"Nouveau message : {msg.subject}",
+                    f"De {msg.customer_name} <{msg.customer_email}>\n\n{msg.content}",
+                    settings.EMAIL_FROM, [settings.ADMIN_EMAIL], fail_silently=False,
+                )
+            except Exception:
+                logger.exception("Échec de la notification du message #%s", msg.id)
 
     def get_permissions(self):
         # Le formulaire de contact public peut créer un message

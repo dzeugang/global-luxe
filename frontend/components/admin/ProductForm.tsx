@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import ProductExtrasEditor, { type ProductExtras } from '@/components/admin/ProductExtrasEditor';
 import { productSchema, type ProductFormData, type ProductFormInput } from '@/schemas/product.schema';
 import Link from 'next/link';
 import {
@@ -30,7 +31,7 @@ interface UploadedImage {
 
 interface Props {
   productId?: string;
-  initialData?: Partial<ProductFormData> & { main_image?: string; images?: string[] };
+  initialData?: Partial<ProductFormData> & { main_image?: string; images?: string[] } & Partial<ProductExtras>;
 }
 
 export default function ProductForm({ productId, initialData }: Props) {
@@ -43,6 +44,12 @@ export default function ProductForm({ productId, initialData }: Props) {
   const [imageUrl, setImageUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [extras, setExtras] = useState<ProductExtras>({
+    options: initialData?.options ?? [],
+    features: initialData?.features ?? [],
+    specs: initialData?.specs ?? [],
+  });
+  const [extrasDirty, setExtrasDirty] = useState(false);
 
   const isEdit = Boolean(productId);
 
@@ -234,6 +241,9 @@ export default function ProductForm({ productId, initialData }: Props) {
       is_active: Boolean(data.is_active),
       is_featured: Boolean(data.is_featured),
       is_best_seller: Boolean(data.is_best_seller),
+      options: extras.options,
+      features: extras.features,
+      specs: extras.specs,
     };
 
     if (data.category && Number(data.category) > 0) {
@@ -296,14 +306,14 @@ export default function ProductForm({ productId, initialData }: Props) {
   // ============================================
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
+      if (isDirty || extrasDirty) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
+  }, [isDirty, extrasDirty]);
 
   return (
     <div>
@@ -543,6 +553,12 @@ export default function ProductForm({ productId, initialData }: Props) {
               </div>
             )}
           </div>
+
+          <ProductExtrasEditor
+            value={extras}
+            onChange={(next) => { setExtras(next); setExtrasDirty(true); }}
+            imageUrls={images.filter((i) => !i.uploading && i.url).map((i) => i.url)}
+          />
         </div>
 
         {/* COLONNE DROITE */}

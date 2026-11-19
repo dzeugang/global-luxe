@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useShop } from '@/components/ShopProvider';
 
 const schema = z.object({
   username: z.string().min(1, 'Identifiant requis'),
@@ -13,6 +14,7 @@ const schema = z.object({
 });
 
 export default function AdminLogin() {
+  const shop = useShop();
   const router = useRouter();
   const [error, setError] = useState('');
   const { register, handleSubmit, formState: { errors, isSubmitting } } =
@@ -33,7 +35,9 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen bg-dark flex items-center justify-center px-4">
       <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
-        <h1 className="font-serif text-3xl font-bold text-center mb-2">GLOBAL <span className="text-gold">LUXE</span></h1>
+        {shop.logo_url
+          ? <img src={shop.logo_url} alt={shop.shop_name} className="h-14 w-auto mx-auto mb-2" />
+          : <h1 className="font-serif text-3xl font-bold text-center mb-2 uppercase text-gold">{shop.shop_name}</h1>}
         <p className="text-center text-gray-500 mb-6">Connexion administrateur</p>
         <div className="space-y-4">
           <div>

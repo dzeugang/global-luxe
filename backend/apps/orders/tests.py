@@ -132,3 +132,72 @@ class SendToCJTests(APITestCase):
         r = self.client.post(f'/api/orders/{self.order.id}/send_to_cj/')
         self.assertEqual(r.status_code, 400)
         self.assertIn('non liés à CJ', r.data['detail'])
+
+
+class TrackingAndNotificationTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.admin = User.objects.create_user('admin', password='x', is_staff=True)
+        self.product = Product.objects.create(name='Bague', sale_price=80, stock=3)
+        self.order = Order.objects.create(
+            customer_email='Client@Example.com', customer_name='Awa', customer_phone='1',
+            address_line1='a', city='Dakar', postal_code='1', country='SN', total=80,
+        )
+        self.order.items.create(product=self.product, quantity=1, unit_price=80)
+
+    def test_track_with_matching_email(self):
+        r = self.client.post('/api/orders/track/', {'order_id': self.order.id, 'email': 'client@example.com'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['status_label'], 'En attente')
+        self.assertNotIn('customer_phone', r.data)
+        self.assertNotIn('cj_response', r.data)
+
+    def test_track_with_wrong_email_is_404(self):
+        r = self.client.post('/api/orders/track/', {'order_id': self.order.id, 'email': 'autre@example.com'}, format='json')
+        self.assertEqual(r.status_code, 404)
+
+    def test_status_change_emails_customer(self):
+        from django.core import mail
+        self.client.force_authenticate(self.admin)
+        self.client.post(f'/api/orders/{self.order.id}/set_tracking/', {'tracking_number': 'LP123'}, format='json')
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, 'shipped')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('LP123', mail.outbox[0].body)
+
+    def test_stats_contains_dashboard_data(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.get('/api/orders/stats/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['total_sales'], 80.0)
+        self.assertEqual(r.data['status_counts']['pending'], 1)
+        self.assertEqual(r.data['low_stock'][0]['name'], 'Bague')
+        self.assertEqual(len(r.data['revenue_per_week']), 8)
+
+    def test_admin_search_by_email(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.get('/api/orders/', {'search': 'example.com'})
+        self.assertEqual(r.data['count'], 1)
+
+    def test_deleting_ordered_product_deactivates_it(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.delete(f'/api/products/{self.product.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.is_active)
+
+
+class ContactFormTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_public_contact_cannot_impersonate_admin(self):
+        from apps.messaging.models import Message
+        r = self.client.post('/api/messages/', {
+            'customer_name': 'Awa', 'customer_email': 'awa@example.com',
+            'subject': 'Question', 'content': 'Bonjour', 'is_from_admin': True, 'is_read': True,
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        msg = Message.objects.get()
+        self.assertFalse(msg.is_from_admin)
+        self.assertFalse(msg.is_read)

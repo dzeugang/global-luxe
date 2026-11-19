@@ -110,6 +110,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'login': config('THROTTLE_LOGIN', default='10/hour'),
         'public_create': config('THROTTLE_PUBLIC_CREATE', default='20/hour'),
+        'public_track': config('THROTTLE_PUBLIC_TRACK', default='30/hour'),
     },
 }
 

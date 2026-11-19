@@ -33,7 +33,7 @@ interface HeroHeaderProps {
 export default function HeroHeader({
   mediaSrc = '/hero-default.jpg',
   mediaType = 'image',
-  badgeText = '✨ Global Luxe Premium',
+  badgeText = '',
   title = ['Shop Smarter.', 'Live Better.', 'Experience Luxury.'],
   subtitle = 'Votre marketplace premium pour découvrir les meilleurs produits avec une expérience fluide, riche et professionnelle.',
   ctaText = 'Explorer les produits',
@@ -128,10 +128,12 @@ export default function HeroHeader({
 
           {/* COLONNE GAUCHE */}
           <div className={`space-y-6 transition-all duration-1000 ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 text-sm text-white/90 w-fit">
-              <span className="w-2 h-2 rounded-full bg-gold animate-pulse" />
-              {badgeText}
-            </div>
+            {badgeText && (
+              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 text-sm text-white/90 w-fit">
+                <span className="w-2 h-2 rounded-full bg-gold animate-pulse" />
+                {badgeText}
+              </div>
+            )}
 
             <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black text-white leading-[1.1] tracking-tight">
               {title.map((line, i) => (
