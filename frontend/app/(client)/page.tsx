@@ -13,6 +13,54 @@ import { ArrowRight } from 'lucide-react';
 // Page régénérée au plus toutes les 60 s : les nouveaux produits apparaissent sans rebuild
 export const revalidate = 60;
 
+// Cartes « collections » de l'accueil : photo réaliste + voile de couleur.
+// Pour personnaliser : changer l'image (URL ou fichier dans public/), le texte et la catégorie visée.
+// « base » = couleur affichée pendant le chargement de la photo.
+const COLLECTIONS = [
+  {
+    title: 'Le son, en grand',
+    subtitle: "Enceintes et systèmes audio pour vivre l'expérience ultime",
+    cta: 'Découvrir',
+    badge: 'Premium',
+    href: '/categorie/audio',
+    image: 'https://images.unsplash.com/photo-1545454675-3531b543be5d?w=1200&q=75',
+    tint: 'from-purple-950/90 via-purple-900/40',
+    base: 'bg-purple-900',
+  },
+  {
+    title: 'Réalité virtuelle',
+    cta: 'Acheter',
+    href: '/categorie/gaming',
+    image: 'https://images.unsplash.com/photo-1593508512255-86ab42a8e620?w=900&q=75',
+    tint: 'from-rose-900/90 via-rose-700/35',
+    base: 'bg-rose-700',
+  },
+  {
+    title: 'Casques audio',
+    cta: 'Explorer',
+    href: '/categorie/audio',
+    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=900&q=75',
+    tint: 'from-blue-950/90 via-blue-800/35',
+    base: 'bg-blue-800',
+  },
+  {
+    title: 'Smartphones',
+    cta: 'Découvrir',
+    href: '/categorie/smartphones',
+    image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=900&q=75',
+    tint: 'from-gray-950/90 via-gray-800/35',
+    base: 'bg-gray-800',
+  },
+  {
+    title: 'Appareils photo',
+    cta: 'Voir la collection',
+    href: '/categorie/photo',
+    image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=900&q=75',
+    tint: 'from-orange-950/90 via-orange-800/35',
+    base: 'bg-orange-800',
+  },
+];
+
 interface PaginatedResponse<T> {
   count?: number;
   next?: string | null;
@@ -167,90 +215,41 @@ export default async function HomePage() {
           ============================================ */}
       <section className="container-app py-8">
         <div className="text-center mb-8">
-          <h2 className="h2">Découvrez nos Collections</h2>
-          <p className="text-gray-500 text-sm mt-1">
-            Discover our curated collections
-          </p>
+          <h2 className="h2">Découvrez nos collections</h2>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {/* GROSSE CARTE */}
-          <Link
-            href="/categorie/electronics"
-            className="md:row-span-2 bg-gradient-to-br from-purple-900 to-purple-700 rounded-2xl overflow-hidden relative aspect-square md:aspect-auto p-6 flex flex-col justify-end text-white min-h-[300px] hover:scale-[1.02] transition group cursor-pointer"
-          >
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition" />
-            <div className="relative z-10">
-              <span className="inline-block bg-gold text-dark text-xs font-bold px-2 py-1 rounded-full mb-3">
-                Premium
-              </span>
-              <h3 className="font-serif text-2xl font-bold mb-2">
-                Smart Sound with Smart System
-              </h3>
-              <p className="text-sm text-white/80 mb-3">
-                Découvrez l&apos;expérience audio ultime
-              </p>
-              <span className="text-sm font-bold hover:text-gold flex items-center gap-1">
-                Shop Now →
-              </span>
-            </div>
-          </Link>
+          {COLLECTIONS.map((c, i) => (
+            <Link
+              key={c.title}
+              href={c.href}
+              className={`relative rounded-2xl overflow-hidden p-6 flex flex-col justify-end text-white group ${c.base} ${
+                i === 0 ? 'md:row-span-2 aspect-square md:aspect-auto min-h-[300px]' : 'min-h-[180px]'
+              }`}
+            >
+              {/* Photo d'arrière-plan, légèrement zoomée au survol */}
+              <img
+                src={c.image}
+                alt=""
+                loading="lazy"
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+              {/* Voile coloré (couleur de la collection) pour garder le texte lisible */}
+              <div className={`absolute inset-0 bg-gradient-to-t ${c.tint} to-transparent`} />
+              <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition" />
 
-          {/* Carte 2 : VR */}
-          <Link
-            href="/categorie/electronics"
-            className="bg-gradient-to-br from-pink-600 to-rose-500 rounded-2xl overflow-hidden relative p-6 flex flex-col justify-end text-white min-h-[180px] hover:scale-[1.02] transition group cursor-pointer"
-          >
-            <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition" />
-            <div className="relative z-10">
-              <h3 className="font-serif text-xl font-bold mb-2">
-                Virtual Reality Experience
-              </h3>
-              <span className="text-sm hover:text-yellow-200">Buy Now →</span>
-            </div>
-          </Link>
-
-          {/* Carte 3 : Headphone */}
-          <Link
-            href="/categorie/electronics"
-            className="bg-gradient-to-br from-blue-700 to-cyan-600 rounded-2xl overflow-hidden relative p-6 flex flex-col justify-end text-white min-h-[180px] hover:scale-[1.02] transition group cursor-pointer"
-          >
-            <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition" />
-            <div className="relative z-10">
-              <h3 className="font-serif text-xl font-bold mb-2">
-                Smart Headphone
-              </h3>
-              <span className="text-sm hover:text-yellow-200">Explore →</span>
-            </div>
-          </Link>
-
-          {/* Carte 4 : Smartphone */}
-          <Link
-            href="/categorie/electronics"
-            className="bg-gradient-to-br from-gray-800 to-gray-600 rounded-2xl overflow-hidden relative p-6 flex flex-col justify-end text-white min-h-[180px] hover:scale-[1.02] transition group cursor-pointer"
-          >
-            <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition" />
-            <div className="relative z-10">
-              <h3 className="font-serif text-xl font-bold mb-2">Smartphone</h3>
-              <span className="text-sm hover:text-gold">Discover →</span>
-            </div>
-          </Link>
-
-          {/* Carte 5 : Camera */}
-          <Link
-            href="/categorie/electronics"
-            className="bg-gradient-to-br from-amber-700 to-orange-600 rounded-2xl overflow-hidden relative p-6 flex flex-col justify-end text-white min-h-[180px] hover:scale-[1.02] transition group cursor-pointer"
-          >
-            <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition" />
-            <div className="relative z-10">
-              <h3 className="font-serif text-xl font-bold mb-2">
-                Camera Collection
-              </h3>
-              <span className="text-sm hover:text-yellow-200">
-                Shop Cameras →
-              </span>
-            </div>
-          </Link>
+              <div className="relative z-10">
+                {c.badge && (
+                  <span className="inline-block bg-gold text-dark text-xs font-bold px-2 py-1 rounded-full mb-3">{c.badge}</span>
+                )}
+                <h3 className={`font-serif font-bold mb-2 drop-shadow ${i === 0 ? 'text-2xl lg:text-3xl' : 'text-xl'}`}>{c.title}</h3>
+                {c.subtitle && <p className="text-sm text-white/85 mb-3">{c.subtitle}</p>}
+                <span className="text-sm font-bold inline-flex items-center gap-1 group-hover:gap-2 group-hover:text-gold transition-all">
+                  {c.cta} →
+                </span>
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
 
